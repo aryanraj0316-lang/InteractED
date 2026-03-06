@@ -1,7 +1,7 @@
 import * as SecureStore from "expo-secure-store";
 
 // 🔗 ngrok base URL (NO trailing slash)
-const API_URL = "https://edgar-elytroid-dessie.ngrok-free.dev/api";
+const API_URL = "https://interacted-backend.onrender.com";
 
 export const apiRequest = async (endpoint, method = "GET", body = null) => {
   const token = await SecureStore.getItemAsync("userToken");
