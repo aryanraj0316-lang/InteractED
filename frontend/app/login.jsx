@@ -29,7 +29,7 @@ export default function LoginScreen() {
 
     setLoading(true);
     try {
-      const data = await apiRequest('/auth/login', 'POST', { rollNo, password });
+      const data = await apiRequest("/api/auth/login", "POST",{ rollNo, password });
 
       if (!data?.token || !data?.user) {
         return Alert.alert("Login Failed", data?.error || "Invalid credentials.");

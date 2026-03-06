@@ -27,7 +27,7 @@ export default function SignupScreen() {
 
     setLoading(true);
     try {
-      const data = await apiRequest("/auth/register", "POST", {
+      const data = await apiRequest("/api/auth/register", "POST",{
         name,
         rollNo,
         password,
@@ -45,7 +45,7 @@ export default function SignupScreen() {
         router.replace("/(tabs)");
       }
     } catch (error) {
-      Alert.alert("Error", "Server unreachable. Check backend & ngrok.");
+      Alert.alert("Error", error.message || "Connection failed");
     } finally {
       setLoading(false);
     }

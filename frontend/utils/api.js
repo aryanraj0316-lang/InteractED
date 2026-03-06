@@ -1,6 +1,6 @@
 import * as SecureStore from "expo-secure-store";
 
-// 🔗 ngrok base URL (NO trailing slash)
+// 🔗 Your Live Render URL (Double-check this matches your Render Dashboard!)
 const API_URL = "https://interacted-backend.onrender.com";
 
 export const apiRequest = async (endpoint, method = "GET", body = null) => {
@@ -12,24 +12,40 @@ export const apiRequest = async (endpoint, method = "GET", body = null) => {
   };
 
   try {
-  const response = await fetch(`${API_URL}${endpoint}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+    // Added a 15-second timeout to allow for Render "wake up" time
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-  const contentType = response.headers.get("content-type");
+    const response = await fetch(`${API_URL}${endpoint}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal: controller.signal,
+    });
 
-  // Check if the response is actually JSON
-  if (!contentType || !contentType.includes("application/json")) {
-    const rawText = await response.text();
-    console.error("SERVER RETURNED NON-JSON:", rawText.substring(0, 200));
-    throw new Error("Server did not return JSON");
+    clearTimeout(timeoutId);
+
+    const contentType = response.headers.get("content-type");
+
+    // Safety check: If Render sends HTML (like a 404), this catches it
+    if (!contentType || !contentType.includes("application/json")) {
+      const errorBody = await response.text();
+      console.error("RAW SERVER ERROR:", errorBody.substring(0, 200));
+      throw new Error("Server returned HTML instead of JSON. Check Render logs.");
+    }
+
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error || "Something went wrong");
+    }
+
+    return data;
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      throw new Error("Server took too long to wake up. Please try again.");
+    }
+    console.error("API ERROR:", error.message);
+    throw error;
   }
-
-  return await response.json();
-} catch (error) {
-  console.error("API ERROR:", error.message);
-  throw error;
-}
 };

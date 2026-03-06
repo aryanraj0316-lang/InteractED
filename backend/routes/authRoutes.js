@@ -4,8 +4,17 @@ const auth = require("../middleware/auth");
 
 const router = express.Router();
 
-router.post("/register", register);
-router.post("/login", login);
+// Log calls for debugging
+router.post("/register", (req, res, next) => {
+  console.log("POST /api/auth/register called");
+  next();
+}, register);
+
+router.post("/login", (req, res, next) => {
+  console.log("POST /api/auth/login called");
+  next();
+}, login);
+
 router.get("/me", auth, me);
 
 module.exports = router;
