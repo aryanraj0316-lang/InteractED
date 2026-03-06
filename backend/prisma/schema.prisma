@@ -1,0 +1,65 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id          Int       @id @default(autoincrement())
+  name        String
+  rollNo      String    @unique
+  password    String
+  role        String    @default("USER")
+  isVerified  Boolean   @default(false)
+  announcements Announcement[]
+  assignments Assignment[]
+  reads        AnnouncementRead[]
+  submissions  AssignmentSubmission[]
+  createdAt    DateTime @default(now())
+}
+
+model Announcement {
+  id        Int       @id @default(autoincrement())
+  title     String
+  content   String
+  authorId  Int
+  author    User      @relation(fields: [authorId], references: [id])
+  reads     AnnouncementRead[]
+  createdAt DateTime  @default(now())
+}
+
+model AnnouncementRead {
+  id             Int         @id @default(autoincrement())
+  announcementId Int
+  userId         Int
+  announcement   Announcement @relation(fields: [announcementId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+
+  @@unique([announcementId, userId])
+}
+
+model Assignment {
+  id          Int       @id @default(autoincrement())
+  subject     String
+  title       String
+  description String?
+  deadline    DateTime?
+  creatorId   Int
+  creator     User                   @relation(fields: [creatorId], references: [id])
+  submissions AssignmentSubmission[]
+  createdAt   DateTime                @default(now())
+}
+
+model AssignmentSubmission {
+  id           Int       @id @default(autoincrement())
+  assignmentId Int
+  userId       Int
+  completed    Boolean   @default(true)
+  assignment   Assignment @relation(fields: [assignmentId], references: [id])
+  user         User       @relation(fields: [userId], references: [id])
+
+  @@unique([assignmentId, userId])
+}
