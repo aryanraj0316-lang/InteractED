@@ -12,21 +12,24 @@ export const apiRequest = async (endpoint, method = "GET", body = null) => {
   };
 
   try {
-    const response = await fetch(`${API_URL}${endpoint}`, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    });
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
 
-    const contentType = response.headers.get("content-type");
+  const contentType = response.headers.get("content-type");
 
-    if (!contentType || !contentType.includes("application/json")) {
-      throw new Error("Server did not return JSON");
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error("API ERROR:", error.message);
-    throw error;
+  // Check if the response is actually JSON
+  if (!contentType || !contentType.includes("application/json")) {
+    const rawText = await response.text();
+    console.error("SERVER RETURNED NON-JSON:", rawText.substring(0, 200));
+    throw new Error("Server did not return JSON");
   }
+
+  return await response.json();
+} catch (error) {
+  console.error("API ERROR:", error.message);
+  throw error;
+}
 };
