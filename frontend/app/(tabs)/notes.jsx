@@ -19,7 +19,7 @@ import {
 
 import { Picker } from "@react-native-picker/picker";
 
-const API_URL = "http://10.64.244.177:5000";
+const API_URL = "https://interacted-backend.onrender.com";
 
 export default function Notes() {
 
