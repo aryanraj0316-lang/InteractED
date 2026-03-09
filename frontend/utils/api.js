@@ -1,9 +1,12 @@
 import * as SecureStore from "expo-secure-store";
 
-// 🔗 Your Live Render URL (Double-check this matches your Render Dashboard!)
-const API_URL = "https://interacted-backend.onrender.com";
+// 🔗 Your Live Render URL
+const API_URL = "http://10.64.244.177:5000";
 
 export const apiRequest = async (endpoint, method = "GET", body = null) => {
+  // 🔹 Log every API call
+  console.log("API CALL:", method, endpoint, body);
+
   const token = await SecureStore.getItemAsync("userToken");
 
   const headers = {
@@ -35,14 +38,14 @@ export const apiRequest = async (endpoint, method = "GET", body = null) => {
     }
 
     const data = await response.json();
-    
+
     if (!response.ok) {
       throw new Error(data.error || "Something went wrong");
     }
 
     return data;
   } catch (error) {
-    if (error.name === 'AbortError') {
+    if (error.name === "AbortError") {
       throw new Error("Server took too long to wake up. Please try again.");
     }
     console.error("API ERROR:", error.message);

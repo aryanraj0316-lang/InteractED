@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { 
-  View, Text, ScrollView, StyleSheet, RefreshControl, 
+import {
+  View, Text, ScrollView, StyleSheet, RefreshControl,
   TouchableOpacity, ActivityIndicator, Dimensions, Alert
 } from 'react-native';
 import { Bell, Clock, AlertTriangle, BookOpen, ChevronRight, PlusCircle, ShieldCheck } from 'lucide-react-native';
@@ -20,19 +20,19 @@ export default function ProfessionalHome() {
     try {
       // Fetching all academic data in parallel for speed
       const [assigns, announ] = await Promise.all([
-        apiRequest('/assignments'),
-        apiRequest('/announcements')
+        apiRequest('/api/assignments'), // <-- add /api
+        apiRequest('/api/announcements') // <-- add /api
       ]);
-      
-      setData({ 
-        assignments: Array.isArray(assigns) ? assigns : [], 
-        announcements: Array.isArray(announ) ? announ : [] 
+
+      setData({
+        assignments: Array.isArray(assigns) ? assigns : [],
+        announcements: Array.isArray(announ) ? announ : []
       });
 
       // CRITICAL: Fetching fresh role and verification status from SecureStore
       const userRole = await SecureStore.getItemAsync('userRole');
       const verifiedStatus = await SecureStore.getItemAsync('userVerified');
-      
+
       setRole(userRole || 'USER');
       setIsVerified(verifiedStatus === 'true');
 
@@ -44,8 +44,8 @@ export default function ProfessionalHome() {
     }
   };
 
-    useEffect(() => { 
-    fetchData(); 
+  useEffect(() => {
+    fetchData();
   }, []);
 
   const onRefresh = useCallback(() => {
@@ -75,7 +75,7 @@ export default function ProfessionalHome() {
 
   return (
     <View style={{ flex: 1 }}>
-      <ScrollView 
+      <ScrollView
         style={styles.container}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#007AFF" />}
       >
