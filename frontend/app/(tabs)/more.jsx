@@ -9,7 +9,7 @@ export default function CreateAnnouncement() {
   const handlePost = async () => {
     if (!title || !content) return Alert.alert("Error", "Please fill all fields");
 
-    const response = await apiRequest('/announcements', 'POST', { title, content });
+    const response = await apiRequest('/api/announcements', 'POST', { title, content });
     
     if (response.id) {
       Alert.alert("Success", "Announcement posted to InteractED!");

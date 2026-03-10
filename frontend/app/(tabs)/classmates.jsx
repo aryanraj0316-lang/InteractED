@@ -10,7 +10,7 @@ export default function ClassmateDirectory() {
   const [myId, setMyId] = useState(null);
 
   const fetchUsers = async () => {
-    const data = await apiRequest('/users');
+    const data = await apiRequest('/api/users');
     setUsers(data || []);
     const role = await SecureStore.getItemAsync('userRole');
     const id = await SecureStore.getItemAsync('userId');
