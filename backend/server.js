@@ -46,9 +46,14 @@ app.use("/api/auth", authRoutes);
 // ---------------- FILE UPLOAD ----------------
 app.post("/api/files/upload", auth, upload.single("file"), async (req, res) => {
   try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    // FIX: return the public secure URL from Cloudinary
     res.json({
       message: "File uploaded successfully",
-      fileUrl: req.file.path,
+      fileUrl: req.file.path || req.file?.secure_url,
     });
   } catch (err) {
     console.error("Upload error:", err);
@@ -95,30 +100,35 @@ app.post("/api/announcements", auth, isElevated, async (req, res) => {
   }
 });
 
+// ---------------- NOTES ----------------
 app.post("/api/notes", auth, async (req, res) => {
   const { subject, title, description, fileUrl, fileName } = req.body;
+
+  if (!subject || !fileUrl || !fileName) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
 
   try {
     const note = await prisma.note.create({
       data: {
         subject,
-        title,
+        title: title || fileName,
         description,
         fileUrl,
         fileName,
-        uploaderId: req.user.id
-      }
+        uploaderId: req.user.id,
+      },
     });
 
     res.json(note);
   } catch (err) {
+    console.error("❌ Failed to create note:", err);
     res.status(500).json({ error: "Failed to create note" });
   }
 });
 
 app.get("/api/notes", auth, async (req, res) => {
   try {
-
     console.log("GET /api/notes called by user:", req.user.id);
 
     const notes = await prisma.note.findMany({
@@ -127,23 +137,21 @@ app.get("/api/notes", auth, async (req, res) => {
           select: {
             name: true,
             rollNo: true,
-            role: true
-          }
-        }
+            role: true,
+          },
+        },
       },
-      orderBy: { createdAt: "desc" }
+      orderBy: { createdAt: "desc" },
     });
 
     console.log("NOTES FOUND:", notes.length);
 
     res.json(notes);
-
   } catch (error) {
     console.error("❌ Notes error:", error);
     res.status(500).json({ error: "Failed to fetch notes" });
   }
 });
-
 
 // ---------------- ASSIGNMENTS ----------------
 app.get("/api/assignments", auth, async (req, res) => {

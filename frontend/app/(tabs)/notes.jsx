@@ -1,7 +1,7 @@
 import * as SecureStore from "expo-secure-store";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
-import * as IntentLauncher from "expo-intent-launcher";
+import * as Sharing from "expo-sharing";
 
 import React, { useEffect, useState } from "react";
 import {
@@ -22,13 +22,11 @@ import { Picker } from "@react-native-picker/picker";
 const API_URL = "https://interacted-backend.onrender.com";
 
 export default function Notes() {
-
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const [modalVisible, setModalVisible] = useState(false);
-
   const [subject, setSubject] = useState("Physics");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -50,7 +48,6 @@ export default function Notes() {
 
       const data = await res.json();
       setNotes(Array.isArray(data) ? data : []);
-
     } catch (err) {
       console.log(err);
       Alert.alert("Error", "Failed to load notes");
@@ -65,92 +62,72 @@ export default function Notes() {
     loadNotes();
   };
 
-  // ---------------- OPEN FILE ----------------
+  // ---------------- DOWNLOAD & SHARE FILE ----------------
   const openFile = async (url, filename) => {
     try {
+      if (!url) {
+        Alert.alert("Error", "File URL is invalid");
+        return;
+      }
 
+      // Destination in local storage
       const fileUri = FileSystem.documentDirectory + filename;
 
+      // Check if file already exists
       const fileInfo = await FileSystem.getInfoAsync(fileUri);
-
       let finalUri = fileUri;
 
       if (!fileInfo.exists) {
         console.log("Downloading:", url);
 
+        // Download file from remote URL to local device
         const download = await FileSystem.downloadAsync(url, fileUri);
-
         finalUri = download.uri;
+        console.log("Downloaded to:", finalUri);
+      } else {
+        console.log("File already exists:", finalUri);
       }
 
-      await IntentLauncher.startActivityAsync(
-        "android.intent.action.VIEW",
-        {
-          data: finalUri,
-          flags: 1,
-          type: getMimeType(filename)
-        }
-      );
+      // Sharing requires local file URI
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(finalUri);
+      } else {
+        Alert.alert("Downloaded", `${filename} saved to device!`);
+      }
 
     } catch (error) {
-      console.log(error);
-      Alert.alert("Error", "Could not open file");
+      console.log("❌ Error downloading/opening file:", error);
+      Alert.alert("Error", "Could not download or open file. Make sure the URL is valid and accessible.");
     }
-  };
-
-  // ---------------- MIME TYPE ----------------
-  const getMimeType = (filename) => {
-
-    const ext = filename.split(".").pop().toLowerCase();
-
-    const types = {
-      pdf: "application/pdf",
-      jpg: "image/jpeg",
-      jpeg: "image/jpeg",
-      png: "image/png",
-      doc: "application/msword",
-      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      ppt: "application/vnd.ms-powerpoint",
-      pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-    };
-
-    return types[ext] || "application/octet-stream";
   };
 
   // ---------------- PICK FILE ----------------
   const pickFile = async () => {
-
     const result = await DocumentPicker.getDocumentAsync({ type: "*/*" });
-
-    if (!result.canceled) {
+    if (!result.canceled && result.assets && result.assets.length > 0) {
       setSelectedFile(result.assets[0]);
     }
-
   };
 
   // ---------------- UPLOAD NOTE ----------------
   const uploadNote = async () => {
-
     if (!selectedFile) {
       Alert.alert("Please select a file first");
       return;
     }
 
     try {
-
       setUploading(true);
-
       const token = await SecureStore.getItemAsync("userToken");
 
       const formData = new FormData();
-
       formData.append("file", {
         uri: selectedFile.uri,
         name: selectedFile.name,
         type: selectedFile.mimeType || "application/octet-stream"
       });
 
-      // Upload file
+      // Upload file to backend
       const uploadRes = await fetch(`${API_URL}/api/files/upload`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
@@ -159,7 +136,11 @@ export default function Notes() {
 
       const uploadData = await uploadRes.json();
 
-      // Save note
+      if (!uploadData.fileUrl) {
+        throw new Error("File URL missing from upload response");
+      }
+
+      // Save note metadata
       await fetch(`${API_URL}/api/notes`, {
         method: "POST",
         headers: {
@@ -183,16 +164,11 @@ export default function Notes() {
       setDescription("");
 
       loadNotes();
-
     } catch (err) {
-
-      console.log(err);
-      Alert.alert("Upload failed");
-
+      console.log("Upload error:", err);
+      Alert.alert("Upload failed", "Could not upload file. Please try again.");
     } finally {
-
       setUploading(false);
-
     }
   };
 
@@ -206,72 +182,49 @@ export default function Notes() {
 
   return (
     <View style={{ flex: 1 }}>
-
       <ScrollView
         style={styles.container}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-
         <Text style={styles.header}>Class Notes</Text>
 
-        {notes.length === 0 && (
-          <Text style={styles.empty}>No notes uploaded yet</Text>
-        )}
+        {notes.length === 0 && <Text style={styles.empty}>No notes uploaded yet</Text>}
 
         {notes.map((note) => (
-
           <TouchableOpacity
             key={note.id}
             style={styles.noteCard}
             onPress={() => openFile(note.fileUrl, note.fileName)}
           >
-
             <View style={styles.subjectBadge}>
               <Text style={styles.subjectText}>{note.subject}</Text>
             </View>
-
             <Text style={styles.title}>{note.title}</Text>
-
-            {note.description && (
-              <Text style={styles.desc}>{note.description}</Text>
-            )}
-
+            {note.description && <Text style={styles.desc}>{note.description}</Text>}
             {note.uploader && (
               <Text style={styles.uploader}>
                 Uploaded by {note.uploader.name} ({note.uploader.rollNo})
               </Text>
             )}
-
           </TouchableOpacity>
-
         ))}
-
       </ScrollView>
 
       {/* Upload Button */}
-      <TouchableOpacity
-        style={styles.fab}
-        onPress={() => setModalVisible(true)}
-      >
+      <TouchableOpacity style={styles.fab} onPress={() => setModalVisible(true)}>
         <Text style={styles.fabText}>+</Text>
       </TouchableOpacity>
 
       {/* Upload Modal */}
       <Modal visible={modalVisible} animationType="slide">
-
         <ScrollView style={styles.modal}>
-
           <Text style={styles.modalTitle}>Upload Notes</Text>
 
           <Text style={styles.label}>Subject</Text>
-
           <View style={styles.dropdown}>
-            <Picker
-              selectedValue={subject}
-              onValueChange={(value) => setSubject(value)}
-            >
+            <Picker selectedValue={subject} onValueChange={(value) => setSubject(value)}>
               <Picker.Item label="Physics" value="Physics" />
               <Picker.Item label="Chemistry" value="Chemistry" />
               <Picker.Item label="Mathematics" value="Mathematics" />
@@ -287,7 +240,6 @@ export default function Notes() {
             value={title}
             onChangeText={setTitle}
           />
-
           <TextInput
             placeholder="Description (optional)"
             style={styles.input}
@@ -317,159 +269,33 @@ export default function Notes() {
           >
             <Text style={{ color: "#888" }}>Cancel</Text>
           </TouchableOpacity>
-
         </ScrollView>
-
       </Modal>
-
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-
-  container: {
-    flex: 1,
-    backgroundColor: "#f7f9fc",
-    padding: 20
-  },
-
-  header: {
-    fontSize: 30,
-    fontWeight: "bold",
-    marginTop: 50,
-    marginBottom: 20
-  },
-
-  empty: {
-    color: "#777",
-    fontSize: 16
-  },
-
-  noteCard: {
-    backgroundColor: "#fff",
-    padding: 20,
-    borderRadius: 16,
-    marginBottom: 16,
-    elevation: 3
-  },
-
-  subjectBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: "#eef3ff",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8
-  },
-
-  subjectText: {
-    color: "#4c6ef5",
-    fontWeight: "600",
-    fontSize: 12
-  },
-
-  title: {
-    fontSize: 18,
-    fontWeight: "bold",
-    marginTop: 8
-  },
-
-  desc: {
-    marginTop: 6,
-    color: "#666"
-  },
-
-  uploader: {
-    marginTop: 12,
-    fontSize: 12,
-    color: "#888"
-  },
-
-  fab: {
-    position: "absolute",
-    bottom: 30,
-    right: 20,
-    width: 65,
-    height: 65,
-    backgroundColor: "#4c6ef5",
-    borderRadius: 32,
-    justifyContent: "center",
-    alignItems: "center"
-  },
-
-  fabText: {
-    color: "#fff",
-    fontSize: 34,
-    fontWeight: "bold"
-  },
-
-  modal: {
-    flex: 1,
-    padding: 25,
-    backgroundColor: "#fff"
-  },
-
-  modalTitle: {
-    fontSize: 26,
-    fontWeight: "bold",
-    marginTop: 40,
-    marginBottom: 25
-  },
-
-  label: {
-    fontWeight: "600",
-    marginBottom: 5
-  },
-
-  dropdown: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    marginBottom: 15
-  },
-
-  input: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 10,
-    padding: 12,
-    marginBottom: 15
-  },
-
-  fileBtn: {
-    backgroundColor: "#f1f3f5",
-    padding: 16,
-    borderRadius: 10,
-    marginBottom: 20
-  },
-
-  fileText: {
-    textAlign: "center",
-    fontWeight: "500"
-  },
-
-  uploadBtn: {
-    backgroundColor: "#4c6ef5",
-    padding: 16,
-    borderRadius: 10
-  },
-
-  uploadText: {
-    textAlign: "center",
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 16
-  },
-
-  cancelBtn: {
-    marginTop: 20,
-    alignItems: "center"
-  },
-
-  loader: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center"
-  }
-
+  container: { flex: 1, backgroundColor: "#f7f9fc", padding: 20 },
+  header: { fontSize: 30, fontWeight: "bold", marginTop: 50, marginBottom: 20 },
+  empty: { color: "#777", fontSize: 16 },
+  noteCard: { backgroundColor: "#fff", padding: 20, borderRadius: 16, marginBottom: 16, elevation: 3 },
+  subjectBadge: { alignSelf: "flex-start", backgroundColor: "#eef3ff", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  subjectText: { color: "#4c6ef5", fontWeight: "600", fontSize: 12 },
+  title: { fontSize: 18, fontWeight: "bold", marginTop: 8 },
+  desc: { marginTop: 6, color: "#666" },
+  uploader: { marginTop: 12, fontSize: 12, color: "#888" },
+  fab: { position: "absolute", bottom: 30, right: 20, width: 65, height: 65, backgroundColor: "#4c6ef5", borderRadius: 32, justifyContent: "center", alignItems: "center" },
+  fabText: { color: "#fff", fontSize: 34, fontWeight: "bold" },
+  modal: { flex: 1, padding: 25, backgroundColor: "#fff" },
+  modalTitle: { fontSize: 26, fontWeight: "bold", marginTop: 40, marginBottom: 25 },
+  label: { fontWeight: "600", marginBottom: 5 },
+  dropdown: { borderWidth: 1, borderColor: "#ddd", borderRadius: 10, marginBottom: 15 },
+  input: { borderWidth: 1, borderColor: "#ddd", borderRadius: 10, padding: 12, marginBottom: 15 },
+  fileBtn: { backgroundColor: "#f1f3f5", padding: 16, borderRadius: 10, marginBottom: 20 },
+  fileText: { textAlign: "center", fontWeight: "500" },
+  uploadBtn: { backgroundColor: "#4c6ef5", padding: 16, borderRadius: 10 },
+  uploadText: { textAlign: "center", color: "#fff", fontWeight: "bold", fontSize: 16 },
+  cancelBtn: { marginTop: 20, alignItems: "center" },
+  loader: { flex: 1, justifyContent: "center", alignItems: "center" }
 });
