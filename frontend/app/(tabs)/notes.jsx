@@ -1,301 +1,161 @@
 import * as SecureStore from "expo-secure-store";
-import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system/legacy";
-import * as Sharing from "expo-sharing";
-
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Alert,
-  ActivityIndicator,
-  RefreshControl,
-  TextInput,
-  Modal
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  ActivityIndicator, RefreshControl, Dimensions,
 } from "react-native";
-
-import { Picker } from "@react-native-picker/picker";
+import { useFocusEffect, useRouter } from "expo-router";
 
 const API_URL = "https://interacted-backend.onrender.com";
+const { width } = Dimensions.get("window");
+const CARD_WIDTH = (width - 48) / 2;
+
+const SUBJECTS = [
+  { name: "Physics",          icon: "⚛",  accent: "#4C6EF5", bg: "#EEF3FF", dark: "#3B5BDB" },
+  { name: "Chemistry",        icon: "⚗",  accent: "#E64980", bg: "#FFF0F6", dark: "#C2255C" },
+  { name: "Mathematics",      icon: "∑",  accent: "#F08C00", bg: "#FFF9DB", dark: "#E67700" },
+  { name: "Biology",          icon: "❧",  accent: "#2F9E44", bg: "#EDFAF3", dark: "#2B8A3E" },
+  { name: "Computer Science", icon: "⌨",  accent: "#7048E8", bg: "#F3F0FF", dark: "#5F3DC4" },
+  { name: "English",          icon: "✦",  accent: "#D9480F", bg: "#FFF4E6", dark: "#C03A0A" },
+];
+
+const SEEN_KEY = "seen_notes_ids";
 
 export default function Notes() {
+  const router = useRouter();
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [seenIds, setSeenIds] = useState(new Set());
 
-  const [modalVisible, setModalVisible] = useState(false);
-  const [subject, setSubject] = useState("Physics");
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [uploading, setUploading] = useState(false);
+  const loadSeenIds = async () => {
+    try {
+      const raw = await SecureStore.getItemAsync(SEEN_KEY);
+      if (raw) setSeenIds(new Set(JSON.parse(raw)));
+    } catch (_) {}
+  };
 
-  useEffect(() => {
-    loadNotes();
-  }, []);
-
-  // ---------------- LOAD NOTES ----------------
   const loadNotes = async () => {
     try {
       const token = await SecureStore.getItemAsync("userToken");
-
       const res = await fetch(`${API_URL}/api/notes`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` },
       });
-
       const data = await res.json();
       setNotes(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.log(err);
-      Alert.alert("Error", "Failed to load notes");
+      console.log("Failed to load notes", err);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadNotes();
-  };
-
-  // ---------------- DOWNLOAD & SHARE FILE ----------------
-  const openFile = async (url, filename) => {
-    try {
-      if (!url) {
-        Alert.alert("Error", "File URL is invalid");
-        return;
-      }
-
-      // Destination in local storage
-      const fileUri = FileSystem.documentDirectory + filename;
-
-      // Check if file already exists
-      const fileInfo = await FileSystem.getInfoAsync(fileUri);
-      let finalUri = fileUri;
-
-      if (!fileInfo.exists) {
-        console.log("Downloading:", url);
-
-        // Download file from remote URL to local device
-        const download = await FileSystem.downloadAsync(url, fileUri);
-        finalUri = download.uri;
-        console.log("Downloaded to:", finalUri);
-      } else {
-        console.log("File already exists:", finalUri);
-      }
-
-      // Sharing requires local file URI
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(finalUri);
-      } else {
-        Alert.alert("Downloaded", `${filename} saved to device!`);
-      }
-
-    } catch (error) {
-      console.log("❌ Error downloading/opening file:", error);
-      Alert.alert("Error", "Could not download or open file. Make sure the URL is valid and accessible.");
-    }
-  };
-
-  // ---------------- PICK FILE ----------------
-  const pickFile = async () => {
-    const result = await DocumentPicker.getDocumentAsync({ type: "*/*" });
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      setSelectedFile(result.assets[0]);
-    }
-  };
-
-  // ---------------- UPLOAD NOTE ----------------
-  const uploadNote = async () => {
-    if (!selectedFile) {
-      Alert.alert("Please select a file first");
-      return;
-    }
-
-    try {
-      setUploading(true);
-      const token = await SecureStore.getItemAsync("userToken");
-
-      const formData = new FormData();
-      formData.append("file", {
-        uri: selectedFile.uri,
-        name: selectedFile.name,
-        type: selectedFile.mimeType || "application/octet-stream"
-      });
-
-      // Upload file to backend
-      const uploadRes = await fetch(`${API_URL}/api/files/upload`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData
-      });
-
-      const uploadData = await uploadRes.json();
-
-      if (!uploadData.fileUrl) {
-        throw new Error("File URL missing from upload response");
-      }
-
-      // Save note metadata
-      await fetch(`${API_URL}/api/notes`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          subject,
-          title: title || selectedFile.name,
-          description,
-          fileUrl: uploadData.fileUrl,
-          fileName: selectedFile.name
-        })
-      });
-
-      Alert.alert("Success", "Note uploaded");
-
-      setModalVisible(false);
-      setSelectedFile(null);
-      setTitle("");
-      setDescription("");
-
+  useFocusEffect(
+    useCallback(() => {
+      loadSeenIds();
       loadNotes();
-    } catch (err) {
-      console.log("Upload error:", err);
-      Alert.alert("Upload failed", "Could not upload file. Please try again.");
-    } finally {
-      setUploading(false);
-    }
+    }, [])
+  );
+
+  const onRefresh = () => { setRefreshing(true); loadNotes(); };
+
+  const getUnseenCount = (subjectName) =>
+    notes.filter((n) => n.subject === subjectName && !seenIds.has(String(n.id))).length;
+
+  const getNoteCount = (subjectName) =>
+    notes.filter((n) => n.subject === subjectName).length;
+
+  const handleSubjectPress = (subject) => {
+    const subjectNotes = notes.filter((n) => n.subject === subject.name);
+    router.push({
+      pathname: "/subject-notes",
+      params: {
+        subjectJson: JSON.stringify(subject),
+        notesJson: JSON.stringify(subjectNotes),
+      },
+    });
   };
 
   if (loading) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#4c6ef5" />
+        <ActivityIndicator size="large" color="#4C6EF5" />
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1 }}>
-      <ScrollView
-        style={styles.container}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      >
-        <Text style={styles.header}>Class Notes</Text>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      showsVerticalScrollIndicator={false}
+    >
+      <Text style={styles.header}>Notes</Text>
+      <Text style={styles.subheader}>Select a subject to browse</Text>
 
-        {notes.length === 0 && <Text style={styles.empty}>No notes uploaded yet</Text>}
+      <View style={styles.grid}>
+        {SUBJECTS.map((subject) => {
+          const unseen = getUnseenCount(subject.name);
+          const total = getNoteCount(subject.name);
 
-        {notes.map((note) => (
-          <TouchableOpacity
-            key={note.id}
-            style={styles.noteCard}
-            onPress={() => openFile(note.fileUrl, note.fileName)}
-          >
-            <View style={styles.subjectBadge}>
-              <Text style={styles.subjectText}>{note.subject}</Text>
-            </View>
-            <Text style={styles.title}>{note.title}</Text>
-            {note.description && <Text style={styles.desc}>{note.description}</Text>}
-            {note.uploader && (
-              <Text style={styles.uploader}>
-                Uploaded by {note.uploader.name} ({note.uploader.rollNo})
+          return (
+            <TouchableOpacity
+              key={subject.name}
+              style={[styles.card, { backgroundColor: subject.bg }]}
+              activeOpacity={0.75}
+              onPress={() => handleSubjectPress(subject)}
+            >
+              {unseen > 0 && (
+                <View style={[styles.badge, { backgroundColor: subject.accent }]}>
+                  <Text style={styles.badgeText}>{unseen}</Text>
+                </View>
+              )}
+
+              <View style={[styles.iconCircle, { backgroundColor: subject.accent + "22" }]}>
+                <Text style={[styles.icon, { color: subject.accent }]}>{subject.icon}</Text>
+              </View>
+
+              <Text style={[styles.subjectName, { color: subject.dark }]} numberOfLines={2}>
+                {subject.name}
               </Text>
-            )}
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
 
-      {/* Upload Button */}
-      <TouchableOpacity style={styles.fab} onPress={() => setModalVisible(true)}>
-        <Text style={styles.fabText}>+</Text>
-      </TouchableOpacity>
+              <Text style={[styles.noteCount, { color: subject.accent }]}>
+                {total} {total === 1 ? "note" : "notes"}
+              </Text>
 
-      {/* Upload Modal */}
-      <Modal visible={modalVisible} animationType="slide">
-        <ScrollView style={styles.modal}>
-          <Text style={styles.modalTitle}>Upload Notes</Text>
-
-          <Text style={styles.label}>Subject</Text>
-          <View style={styles.dropdown}>
-            <Picker selectedValue={subject} onValueChange={(value) => setSubject(value)}>
-              <Picker.Item label="Physics" value="Physics" />
-              <Picker.Item label="Chemistry" value="Chemistry" />
-              <Picker.Item label="Mathematics" value="Mathematics" />
-              <Picker.Item label="Biology" value="Biology" />
-              <Picker.Item label="Computer Science" value="Computer Science" />
-              <Picker.Item label="English" value="English" />
-            </Picker>
-          </View>
-
-          <TextInput
-            placeholder="Title (optional)"
-            style={styles.input}
-            value={title}
-            onChangeText={setTitle}
-          />
-          <TextInput
-            placeholder="Description (optional)"
-            style={styles.input}
-            value={description}
-            onChangeText={setDescription}
-          />
-
-          <TouchableOpacity style={styles.fileBtn} onPress={pickFile}>
-            <Text style={styles.fileText}>
-              {selectedFile ? selectedFile.name : "Select File"}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.uploadBtn}
-            onPress={uploadNote}
-            disabled={uploading}
-          >
-            <Text style={styles.uploadText}>
-              {uploading ? "Uploading..." : "Upload Notes"}
-            </Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.cancelBtn}
-            onPress={() => setModalVisible(false)}
-          >
-            <Text style={{ color: "#888" }}>Cancel</Text>
-          </TouchableOpacity>
-        </ScrollView>
-      </Modal>
-    </View>
+              <View style={[styles.arc, { borderColor: subject.accent + "18" }]} />
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#f7f9fc", padding: 20 },
-  header: { fontSize: 30, fontWeight: "bold", marginTop: 50, marginBottom: 20 },
-  empty: { color: "#777", fontSize: 16 },
-  noteCard: { backgroundColor: "#fff", padding: 20, borderRadius: 16, marginBottom: 16, elevation: 3 },
-  subjectBadge: { alignSelf: "flex-start", backgroundColor: "#eef3ff", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  subjectText: { color: "#4c6ef5", fontWeight: "600", fontSize: 12 },
-  title: { fontSize: 18, fontWeight: "bold", marginTop: 8 },
-  desc: { marginTop: 6, color: "#666" },
-  uploader: { marginTop: 12, fontSize: 12, color: "#888" },
-  fab: { position: "absolute", bottom: 30, right: 20, width: 65, height: 65, backgroundColor: "#4c6ef5", borderRadius: 32, justifyContent: "center", alignItems: "center" },
-  fabText: { color: "#fff", fontSize: 34, fontWeight: "bold" },
-  modal: { flex: 1, padding: 25, backgroundColor: "#fff" },
-  modalTitle: { fontSize: 26, fontWeight: "bold", marginTop: 40, marginBottom: 25 },
-  label: { fontWeight: "600", marginBottom: 5 },
-  dropdown: { borderWidth: 1, borderColor: "#ddd", borderRadius: 10, marginBottom: 15 },
-  input: { borderWidth: 1, borderColor: "#ddd", borderRadius: 10, padding: 12, marginBottom: 15 },
-  fileBtn: { backgroundColor: "#f1f3f5", padding: 16, borderRadius: 10, marginBottom: 20 },
-  fileText: { textAlign: "center", fontWeight: "500" },
-  uploadBtn: { backgroundColor: "#4c6ef5", padding: 16, borderRadius: 10 },
-  uploadText: { textAlign: "center", color: "#fff", fontWeight: "bold", fontSize: 16 },
-  cancelBtn: { marginTop: 20, alignItems: "center" },
-  loader: { flex: 1, justifyContent: "center", alignItems: "center" }
+  loader: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#F7F9FC" },
+  container: { flex: 1, backgroundColor: "#F7F9FC" },
+  content: { paddingHorizontal: 16, paddingBottom: 100 },
+  header: { fontSize: 34, fontWeight: "800", color: "#212529", marginTop: 56, letterSpacing: -0.8 },
+  subheader: { fontSize: 14, color: "#ADB5BD", marginTop: 4, marginBottom: 28, fontWeight: "500" },
+  grid: { flexDirection: "row", flexWrap: "wrap", gap: 16 },
+  card: {
+    width: CARD_WIDTH, borderRadius: 22, padding: 20,
+    overflow: "hidden", minHeight: 155,
+    shadowColor: "#000", shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.07, shadowRadius: 10, elevation: 3,
+  },
+  badge: {
+    position: "absolute", top: 14, right: 14,
+    minWidth: 22, height: 22, borderRadius: 11,
+    justifyContent: "center", alignItems: "center", paddingHorizontal: 6, zIndex: 10,
+  },
+  badgeText: { color: "#fff", fontSize: 11, fontWeight: "800" },
+  iconCircle: { width: 48, height: 48, borderRadius: 14, justifyContent: "center", alignItems: "center", marginBottom: 14 },
+  icon: { fontSize: 22, fontWeight: "600" },
+  subjectName: { fontSize: 15, fontWeight: "800", lineHeight: 20, marginBottom: 6 },
+  noteCount: { fontSize: 12, fontWeight: "600", opacity: 0.8 },
+  arc: { position: "absolute", width: 110, height: 110, borderRadius: 55, borderWidth: 18, bottom: -40, right: -30 },
 });
