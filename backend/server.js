@@ -3,33 +3,22 @@ const cors = require("cors");
 const { PrismaClient } = require("@prisma/client");
 require("dotenv").config();
 
-const multer = require("multer");
 const { v2: cloudinary } = require("cloudinary");
-const { CloudinaryStorage } = require("multer-storage-cloudinary");
+const { smartUpload } = require("./middleware/upload");
 
 const authRoutes = require("./routes/authRoutes");
 const auth = require("./middleware/auth");
 const { isAdmin, isElevated } = require("./middleware/roles");
-// const scheduleRoutes = require("./routes/schedule");
 
 const app = express();
 const prisma = new PrismaClient();
 
+// ── Cloudinary config (images only now) ──────────────────────────
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
-
-const storage = new CloudinaryStorage({
-  cloudinary,
-  params: async (req, file) => ({
-    folder: "interacted_uploads",
-    resource_type: "auto",
-  }),
-});
-
-const upload = multer({ storage });
 
 app.use(cors());
 app.use(express.json());
@@ -37,20 +26,38 @@ app.use(express.json());
 // ── Auth ──────────────────────────────────────────────────────────
 app.use("/api/auth", authRoutes);
 
-// ── Schedule (separate file) ──────────────────────────────────────
-// app.use("/api/schedule", auth, scheduleRoutes);
-
 // ── FILE UPLOAD ───────────────────────────────────────────────────
-app.post("/api/files/upload", auth, upload.single("file"), async (req, res) => {
-  try {
-    if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-    console.log("Uploaded:", req.file.path, "| mime:", req.file.mimetype);
-    res.json({ message: "File uploaded successfully", fileUrl: req.file.path });
-  } catch (err) {
-    console.error("Upload error:", err);
-    res.status(500).json({ error: "File upload failed" });
+// smartUpload automatically routes:
+//   images  (jpg/png/gif/webp) → Cloudinary
+//   PDFs / DOCX               → Google Drive
+app.post(
+  "/api/files/upload",
+  auth,
+  ...smartUpload("file"),          // spread because smartUpload returns [multer, async]
+  async (req, res) => {
+    try {
+      if (!req.uploadResult) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      const { provider, fileUrl, downloadUrl, fileId, fileName } = req.uploadResult;
+
+      console.log(`Uploaded via ${provider}: ${fileName} → ${fileUrl}`);
+
+      res.json({
+        message: "File uploaded successfully",
+        fileUrl,
+        downloadUrl: downloadUrl || fileUrl, // Cloudinary URLs are direct already
+        fileId: fileId || null,
+        fileName,
+        provider,
+      });
+    } catch (err) {
+      console.error("Upload handler error:", err);
+      res.status(500).json({ error: "File upload failed" });
+    }
   }
-});
+);
 
 // ── ANNOUNCEMENTS ─────────────────────────────────────────────────
 app.get("/api/announcements", auth, async (req, res) => {
@@ -222,9 +229,8 @@ app.get("/api/assignments/:id/submissions", auth, isElevated, async (req, res) =
   }
 });
 
-// ── EXAMS (official timetable) ────────────────────────────────────
+// ── EXAMS ─────────────────────────────────────────────────────────
 app.get("/api/exams", auth, async (req, res) => {
-  // Return empty array until you build an exam model
   res.json([]);
 });
 

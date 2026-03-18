@@ -5,7 +5,7 @@ import * as SecureStore from "expo-secure-store";
 const USE_PROD = false;
 // ─────────────────────────────────────────────────────────────────
 
-const LOCAL_URL = "http://10.64.244.177:5000"; // ← replace x.x with your PC's IP (run `ipconfig` in PowerShell)
+const LOCAL_URL = "http://10.58.200.177:5000"; // ← replace x.x with your PC's IP (run `ipconfig` in PowerShell)
 const PROD_URL  = "https://interacted-backend.onrender.com";
 
 export const API_URL = USE_PROD ? PROD_URL : LOCAL_URL;

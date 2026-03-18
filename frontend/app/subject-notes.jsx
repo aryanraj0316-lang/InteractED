@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 
-const API_URL = "https://interacted-backend.onrender.com";
+import { API_URL } from "../utils/api";
 const SEEN_KEY = "seen_notes_ids";
 
 // ── Bottom sheet ──────────────────────────────────────────────────────────────
